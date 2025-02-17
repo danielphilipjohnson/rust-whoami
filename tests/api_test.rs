@@ -102,7 +102,7 @@ async fn test_browser_detection() {
             )
             .await
             .unwrap();
-        let status = response.status(); /
+        let status = response.status();
 
         let body = to_bytes(response.into_body(), BODY_LIMIT).await.unwrap();
         let response_body: WhoAmIResponse = serde_json::from_slice(&body).unwrap();

@@ -3,7 +3,7 @@ use hyper::header::{HeaderMap, ACCEPT_LANGUAGE, USER_AGENT};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use crate::error::ApiError; // ✅ Import centralized error handler
+use crate::error::ApiError;
 use crate::models::whoami::WhoAmIResponse;
 use crate::utils::{parse_browser, parse_language, parse_os};
 
