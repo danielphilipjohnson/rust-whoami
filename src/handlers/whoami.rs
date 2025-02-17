@@ -1,8 +1,9 @@
-use axum::{extract::ConnectInfo, response::Json};
-use hyper::header::{HeaderMap, ACCEPT_LANGUAGE, FORWARDED, USER_AGENT};
+use axum::{extract::ConnectInfo, http::StatusCode, response::IntoResponse, response::Json};
+use hyper::header::{HeaderMap, ACCEPT_LANGUAGE, USER_AGENT};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use crate::error::ApiError; // ✅ Import centralized error handler
 use crate::models::whoami::WhoAmIResponse;
 use crate::utils::{parse_browser, parse_language, parse_os};
 
@@ -11,7 +12,7 @@ static REQUEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 pub async fn handle_whoami(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-) -> Json<WhoAmIResponse> {
+) -> impl IntoResponse {
     let direct_ip = addr.ip().to_string();
 
     let ip = headers
@@ -20,7 +21,7 @@ pub async fn handle_whoami(
         .and_then(|s| s.split(',').next())
         .or_else(|| {
             headers
-                .get(FORWARDED)
+                .get("Forwarded")
                 .and_then(|h| h.to_str().ok())
                 .and_then(|s| {
                     s.split(';')
@@ -30,21 +31,29 @@ pub async fn handle_whoami(
         })
         .unwrap_or(&direct_ip);
 
-    let user_agent = headers
-        .get(USER_AGENT)
-        .and_then(|h| h.to_str().ok())
-        .map(String::from);
+    let user_agent = match headers.get(USER_AGENT).and_then(|h| h.to_str().ok()) {
+        Some(ua) => Some(ua.to_string()),
+        None => {
+            return ApiError::new(
+                StatusCode::BAD_REQUEST,
+                "Missing required header: User-Agent",
+            )
+            .into_response()
+        }
+    };
 
-    let language = headers
-        .get(ACCEPT_LANGUAGE)
-        .and_then(|h| h.to_str().ok())
-        .map(String::from);
+    let language = match headers.get(ACCEPT_LANGUAGE).and_then(|h| h.to_str().ok()) {
+        Some(lang) => Some(lang.to_string()),
+        None => {
+            return ApiError::new(
+                StatusCode::BAD_REQUEST,
+                "Missing required header: Accept-Language",
+            )
+            .into_response()
+        }
+    };
 
-    let parsed_language = headers
-        .get(ACCEPT_LANGUAGE)
-        .and_then(|h| h.to_str().ok())
-        .and_then(parse_language);
-
+    let parsed_language = language.as_deref().and_then(parse_language);
     let os = user_agent.as_deref().and_then(parse_os);
     let (browser_name, browser_version) = user_agent
         .as_deref()
@@ -53,14 +62,18 @@ pub async fn handle_whoami(
 
     let total_requests = REQUEST_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
 
-    Json(WhoAmIResponse {
-        total_requests,
-        ipaddress: ip.to_string(),
-        language,
-        software: user_agent,
-        os,
-        browser_name,
-        browser_version,
-        parsed_language,
-    })
+    (
+        StatusCode::OK,
+        Json(WhoAmIResponse {
+            total_requests,
+            ipaddress: ip.to_string(),
+            language,
+            software: user_agent,
+            os,
+            browser_name,
+            browser_version,
+            parsed_language,
+        }),
+    )
+        .into_response()
 }
