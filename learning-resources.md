@@ -1,4 +1,3 @@
----
 
 # 🚀 **Learning Resources for WhoAmI API (Request Header Inspector)**
 
